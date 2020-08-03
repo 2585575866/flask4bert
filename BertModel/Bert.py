@@ -29,11 +29,24 @@ from termcolor import colored
 from zmq.utils import jsonapi
 import tensorflow as tf
 
+import extract_features
+
 from BertModel.helpers import import_tf, set_logger
 
 
+
+class InputFeatures(object):
+    """A single set of features of data."""
+
+    def __init__(self, unique_id, tokens, input_ids, input_mask, input_type_ids):
+        self.unique_id = unique_id
+        self.tokens = tokens
+        self.input_ids = input_ids
+        self.input_mask = input_mask
+        self.input_type_ids = input_type_ids
+
 class BertWorker():
-    def __init__(self, args, device_map, graph_path, mode, id2label=None):
+    def __init__(self, args, device_map, graph_path, mode, id2label,predicate_id2label, token_id2label):
         super().__init__()
         # self.worker_id = id
         self.device_map = device_map
@@ -53,6 +66,8 @@ class BertWorker():
         self.args = args
         self.mode = mode
         self.id2label = id2label
+        self.predicate_id2label = predicate_id2label
+        self.token_id2label = token_id2label
 
     def close(self):
         self.logger.info('shutting down...')
@@ -61,7 +76,7 @@ class BertWorker():
         self.join()
         self.logger.info('terminated!')
 
-    def get_estimator(self, tf, graph_def):
+    def get_estimator(self, tf, graph_def,mode):
         from tensorflow.python.estimator.estimator import Estimator
         from tensorflow.python.estimator.run_config import RunConfig
         from tensorflow.python.estimator.model_fn import EstimatorSpec
@@ -91,9 +106,9 @@ class BertWorker():
             :param params:
             :return:
             """
-            with tf.gfile.GFile(self.graph_path, 'rb') as f:
-                graph_def = tf.GraphDef()
-                graph_def.ParseFromString(f.read())
+            # with tf.gfile.GFile(self.graph_path, 'rb') as f:
+            #     graph_def = tf.GraphDef()
+            #     graph_def.ParseFromString(f.read())
             input_ids = features["input_ids"]
             input_mask = features["input_mask"]
             segment_ids = features["input_type_ids"]
@@ -106,7 +121,7 @@ class BertWorker():
             token_label_index = tf.argmax(token_label_probabilities, axis=-1)
 
             return EstimatorSpec(mode=mode, predictions={
-                'client_id': features['client_id'],
+                # 'client_id': features['client_id'],
                 'predicate_index': predicate_index,
                 'token_label_index': token_label_index,
                 'predicate_probabilities': predicate_probabilities,
@@ -156,11 +171,11 @@ class BertWorker():
         # session-wise XLA doesn't seem to work on tf 1.10
         # if args.xla:
         #     config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
-        if self.mode == 'NER':
+        if mode == 'NER':
             return Estimator(model_fn=ner_model_fn, config=RunConfig(session_config=config))
-        elif self.mode == 'BERT':
+        elif mode == 'BERT':
             return Estimator(model_fn=model_fn, config=RunConfig(session_config=config))
-        elif self.mode == 'CLASS':
+        elif mode == 'CLASS':
             return Estimator(model_fn=classification_model_fn, config=RunConfig(session_config=config))
 
 
@@ -265,12 +280,12 @@ class BertWorker():
     def run_ner(self,r):
         # Windows does not support logger in MP environment, thus get a new logger
         # inside the process for better compatibility
-        logger = set_logger(colored('WORKER-%d' % self.worker_id, 'yellow'), self.verbose)
+        logger = set_logger(colored('WORKER-%d' , 'yellow'), self.verbose)
 
-        logger.info('use device %s, load graph from %s' %
-                    ('cpu' if self.device_id < 0 else ('gpu: %d' % self.device_id), self.graph_path))
+        # logger.info('use device %s, load graph from %s' %
+        #             ('cpu' if len(self.device_map) <= 0 else ('gpu: %s' % ",".join(self.device_map)), self.graph_path))
 
-        tf = import_tf(self.device_id, self.verbose, use_fp16=self.use_fp16)
+        tf = import_tf(self.device_map, self.verbose, use_fp16=self.use_fp16)
 
         prediction = next(r)
 
@@ -302,9 +317,9 @@ class BertWorker():
             tmp_token_label_result.append(predicate_result[index])
             result.append(tmp_token_label_result)
 
-        # result_dict={"pred_label":predicate_result,"token_label_result":token_label_result}
-        # result_dict={"pred_label":predicate_result}
-        # logger.info(result)
+        result_dict={"pred_label":predicate_result,"token_label_result":token_label_result}
+        result_dict={"pred_label":predicate_result}
+        logger.info(result)
 
         # print('rst:', rst)
         # logger.info('job done\tsize: %s\tclient: %s' % (r['encodes'].shape, r['client_id']))
@@ -321,7 +336,7 @@ class BertWorker():
         def gen():
             while True:
                 # tokenizer = FullTokenizer(vocab_file=os.path.join(self.args.bert_model_dir, 'vocab.txt'))
-                tokenizer = FullTokenizer(vocab_file="D:\\LiuXianXian\\pycharm--code\\flask4bert\\BertModel\\checkpoints\\vocab.txt")
+                tokenizer = FullTokenizer(vocab_file="D:\\LiuXianXian\\pycharm--code\\flask4bert\\BertModel\\checkpoints\\vocab_classify.txt")
                 # Windows does not support logger in MP environment, thus get a new logger
                 # inside the process for better compatibility
                 logger = set_logger(colored('WORKER-%d' , 'yellow'), self.verbose)
@@ -348,6 +363,7 @@ class BertWorker():
                     'input_type_ids': [f.input_type_ids for f in tmp_f]
                 }
 
+
         def input_fn():
 
             return (tf.data.Dataset.from_generator(
@@ -363,32 +379,38 @@ class BertWorker():
                     'input_mask': (None, self.max_seq_len), #.shard(num_shards=4, index=4)
                     'input_type_ids': (None, self.max_seq_len)}).prefetch(self.prefetch_size))
 
+
         return input_fn
 
-    def ner_input_fn_builder(self,bert):
+
+
+
+
+    def ner_input_fn_builder(self,ner_bert):
         import sys
         sys.path.append('..')
-        from bert_base.bert.extract_features import convert_lst_to_features
+
         from bert_base.bert.tokenization import FullTokenizer
 
         def gen():
             while True:
-                tokenizer = FullTokenizer(vocab_file=os.path.join(self.args.bert_model_dir, 'vocab.txt'))
+                tokenizer = FullTokenizer(vocab_file=os.path.join(self.args.bert_model_dir, 'vocab_ner.txt'))
                 # Windows does not support logger in MP environment, thus get a new logger
                 # inside the process for better compatibility
-                logger = set_logger(colored('WORKER-%d' % self.worker_id, 'yellow'), self.verbose)
+                logger = set_logger(colored('WORKER-%d' , 'yellow'), self.verbose)
 
 
                 logger.info('ready and listening!')
 
-                msg = bert.msg
+                msg = ner_bert.msg
                 # check if msg is a list of list, if yes consider the input is already tokenized
                 # 对接收到的字符进行切词，并且转化为id格式
                 # logger.info('get msg:%s, type:%s' % (msg[0], type(msg[0])))
                 is_tokenized = all(isinstance(el, list) for el in msg)
                 logger.info(is_tokenized)
-                tmp_f = list(convert_lst_to_features(msg, self.max_seq_len, tokenizer, logger,
+                tmp_f = list(extract_features.ner_convert_lst_to_features(msg, self.max_seq_len, tokenizer, logger,
                                                      is_tokenized, self.mask_cls_sep))
+
 
                 print("tokens:",[f.tokens for f in tmp_f])
                 print("input_ids:",[f.input_ids for f in tmp_f])
@@ -420,4 +442,6 @@ class BertWorker():
                    # "tokens":(None,self.max_seq_len)
                 }).prefetch(self.prefetch_size))
 
+        gen()
+        print("aaa")
         return input_fn
