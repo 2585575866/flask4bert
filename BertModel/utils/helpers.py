@@ -71,7 +71,7 @@ def import_tf(device_map=-1, verbose=False, use_fp16=False):
 
 def init_predict_var(path):
     """
-    初始化NER所需要的一些辅助数据
+    初始化所需要的一些辅助数据
     :param path:
     :return:
     """
@@ -86,4 +86,27 @@ def init_predict_var(path):
         label2id = pickle.load(rf)
         id2label = {value: key for key, value in label2id.items()}
     return num_labels, label2id, id2label
+
+
+def ner_init_predict_var(path):
+    """
+    初始化NER所需要的一些辅助数据
+    :param path:
+    :return:
+    """
+    label_list_file = os.path.join(path, 'label_list.pkl')
+    label_list = []
+    if os.path.exists(label_list_file):
+        with open(label_list_file, 'rb') as fd:
+            label_list = pickle.load(fd)
+    num_labels = len(label_list)
+
+    with open(os.path.join(path, 'predicate_label2id.pkl'), 'rb') as rf:
+        predicate_label2id = pickle.load(rf)
+        predicate_id2label = {value: key for key, value in predicate_label2id.items()}
+    with open(os.path.join(path, 'token_label2id.pkl'), 'rb') as rf:
+        token_label2id = pickle.load(rf)
+        token_id2label = {value: key for key, value in token_label2id.items()}
+    return num_labels, predicate_id2label,token_id2label
+
 

@@ -163,10 +163,6 @@ class BertWorker():
         elif mode == 'CLASS':
             return Estimator(model_fn=classification_model_fn, config=RunConfig(session_config=config))
 
-
-
-
-
     def run(self,r):
         # Windows does not support logger in MP environment, thus get a new logger
         # inside the process for better compatibility
@@ -338,7 +334,7 @@ class BertWorker():
                 is_tokenized = all(isinstance(el, list) for el in bert.msg)
                 logger.info(is_tokenized)
                 tmp_f = list(extract_features.convert_lst_to_features(bert.msg, self.max_seq_len, tokenizer, logger,
-                                                     is_tokenized, self.mask_cls_sep))
+                                                                      is_tokenized, self.mask_cls_sep))
                 print([f.input_ids for f in tmp_f])
                 client_id ="1"
                 yield {
@@ -394,7 +390,7 @@ class BertWorker():
                 is_tokenized = all(isinstance(el, list) for el in msg)
                 logger.info(is_tokenized)
                 tmp_f = list(extract_features.ner_convert_lst_to_features(msg, self.max_seq_len, tokenizer, logger,
-                                                     is_tokenized, self.mask_cls_sep))
+                                                                          is_tokenized, self.mask_cls_sep))
 
 
                 print("tokens:",[f.tokens for f in tmp_f])

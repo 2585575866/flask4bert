@@ -1,84 +1,45 @@
 from flask import Flask
 import tensorflow as tf
+from BertModel.utils.BertWorker import BertWorker
 
-from BertModel.utils.Bert import BertWorker
 
 app = Flask(__name__)
 
 
 from bert_base.server.helper import get_run_args
 import os
-import pickle
+import helpers
 
 
-
-def init_predict_var(path):
-    """
-    初始化所需要的一些辅助数据
-    :param path:
-    :return:
-    """
-    label_list_file = os.path.join(path, 'label_list.pkl')
-    label_list = []
-    if os.path.exists(label_list_file):
-        with open(label_list_file, 'rb') as fd:
-            label_list = pickle.load(fd)
-    num_labels = len(label_list)
-
-    with open(os.path.join(path, 'label2id.pkl'), 'rb') as rf:
-        label2id = pickle.load(rf)
-        id2label = {value: key for key, value in label2id.items()}
-    return num_labels, label2id, id2label
-
-
-def ner_init_predict_var(path):
-    """
-    初始化NER所需要的一些辅助数据
-    :param path:
-    :return:
-    """
-    label_list_file = os.path.join(path, 'label_list.pkl')
-    label_list = []
-    if os.path.exists(label_list_file):
-        with open(label_list_file, 'rb') as fd:
-            label_list = pickle.load(fd)
-    num_labels = len(label_list)
-
-    with open(os.path.join(path, 'predicate_label2id.pkl'), 'rb') as rf:
-        predicate_label2id = pickle.load(rf)
-        predicate_id2label = {value: key for key, value in predicate_label2id.items()}
-    with open(os.path.join(path, 'token_label2id.pkl'), 'rb') as rf:
-        token_label2id = pickle.load(rf)
-        token_id2label = {value: key for key, value in token_label2id.items()}
-    return num_labels, predicate_id2label,token_id2label
-
-
-#------------------------------------------------------------------------------------------
-args = get_run_args()
-
-# bertServer = BertServer(args)
-num_labels, label2id, id2label = init_predict_var(args.classify_model_pb_dir)
-classify_graph_path=os.path.join(args.classify_model_pb_dir,"classification_model.pb")
-with tf.gfile.GFile(classify_graph_path, 'rb') as f:
-    graph_def = tf.GraphDef()
-    graph_def.ParseFromString(f.read())
-bertWorker = BertWorker(args, args.device_map, classify_graph_path, "CLASS", id2label,"","")
-estimator = bertWorker.get_estimator(tf,graph_def,"CLASS")
-
-class Bert():
+class BertMsg():
     def __init__(self,msg):
         self.msg = msg
-msg=["预热数据"]
-bert = Bert(msg)
 
-r = estimator.predict(input_fn=bertWorker.input_fn_builder(bert),yield_single_examples=False)
-bertWorker.run(r)
+
+#------------------------------------------------------------------------------------------
+
+##获取模型运行参数
+args = get_run_args()
+
+num_labels, label2id, id2label = helpers.init_predict_var(args.classify_model_pb_dir)
+classify_graph_path=os.path.join(args.classify_model_pb_dir,"classification_model.pb")
+with tf.gfile.GFile(classify_graph_path, 'rb') as f:
+    classify_graph_def = tf.GraphDef()
+    classify_graph_def.ParseFromString(f.read())
+classify_bertWorker = BertWorker(args, args.device_map, classify_graph_path, "CLASS", id2label,"","")
+classify_estimator = classify_bertWorker.get_estimator(tf,classify_graph_def,"CLASS")
+
+msg=["classify_预热数据"]
+classify_bert = BertMsg(msg)
+
+r = classify_estimator.predict(input_fn=classify_bertWorker.input_fn_builder(classify_bert),yield_single_examples=False)
+classify_bertWorker.run(r)
 
 
 #------------------------------------------------------------------------------------------
 
 
-num_labels, predicate_id2label, token_id2label = ner_init_predict_var(args.ner_model_pb_dir)
+num_labels, predicate_id2label, token_id2label = helpers.ner_init_predict_var(args.ner_model_pb_dir)
 ner_graph_path=os.path.join(args.ner_model_pb_dir,"ner_model.pb")
 with tf.gfile.GFile(ner_graph_path, 'rb') as f:
     ner_graph_def = tf.GraphDef()
@@ -87,11 +48,8 @@ with tf.gfile.GFile(ner_graph_path, 'rb') as f:
 ner_bertWorker = BertWorker(args, args.device_map, ner_graph_def, "NER", "",predicate_id2label, token_id2label)
 ner_estimator = ner_bertWorker.get_estimator(tf,ner_graph_def,"NER")
 
-class Bert():
-    def __init__(self,msg):
-        self.msg = msg
 msg=["ner_预热数据"]
-ner_bert = Bert(msg)
+ner_bert = BertMsg(msg)
 
 ner_r = ner_estimator.predict(input_fn=ner_bertWorker.ner_input_fn_builder(ner_bert),yield_single_examples=False)
 ner_bertWorker.run_ner(ner_r)
