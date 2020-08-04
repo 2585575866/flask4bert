@@ -9,29 +9,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import multiprocessing
 import os
-import random
-import sys
-import threading
-import time
-import pickle
-from collections import defaultdict
-from datetime import datetime
-from multiprocessing import Process
-from multiprocessing.pool import Pool
-
-import numpy as np
-import zmq
-import zmq.decorators as zmqd
 
 from termcolor import colored
-from zmq.utils import jsonapi
 import tensorflow as tf
 
 import extract_features
 
-from BertModel.helpers import import_tf, set_logger
+from BertModel.utils.helpers import import_tf, set_logger
 
 
 
@@ -328,7 +313,7 @@ class BertWorker():
     def input_fn_builder(self,bert):
         import sys
         sys.path.append('..')
-        from bert_base.bert.extract_features import convert_lst_to_features
+
         from bert_base.bert.tokenization import FullTokenizer
 
 
@@ -352,7 +337,7 @@ class BertWorker():
                 # msg = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部"
                 is_tokenized = all(isinstance(el, list) for el in bert.msg)
                 logger.info(is_tokenized)
-                tmp_f = list(convert_lst_to_features(bert.msg, self.max_seq_len, tokenizer, logger,
+                tmp_f = list(extract_features.convert_lst_to_features(bert.msg, self.max_seq_len, tokenizer, logger,
                                                      is_tokenized, self.mask_cls_sep))
                 print([f.input_ids for f in tmp_f])
                 client_id ="1"

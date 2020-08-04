@@ -1,9 +1,7 @@
 from flask import Flask
 import tensorflow as tf
-import tensorflow.keras as keras
-import  numpy as np
 
-from BertModel.Bert import BertWorker
+from BertModel.utils.Bert import BertWorker
 
 app = Flask(__name__)
 
@@ -56,32 +54,30 @@ def ner_init_predict_var(path):
 
 
 #------------------------------------------------------------------------------------------
-# args = get_run_args()
-#
-# # bertServer = BertServer(args)
-# num_labels, label2id, id2label = init_predict_var(args.model_dir)
-# classify_graph_path=os.path.join(args.model_pb_dir,"classification_model.pb")
-# with tf.gfile.GFile(classify_graph_path, 'rb') as f:
-#     graph_def = tf.GraphDef()
-#     graph_def.ParseFromString(f.read())
-# bertWorker = BertWorker(args, args.device_map, classify_graph_path, "CLASS", id2label,"","")
-# estimator = bertWorker.get_estimator(tf,graph_def,"CLASS")
-#
-# class Bert():
-#     def __init__(self,msg):
-#         self.msg = msg
-# msg=["预热数据"]
-# bert = Bert(msg)
-#
-# r = estimator.predict(input_fn=bertWorker.input_fn_builder(bert),yield_single_examples=False)
-# bertWorker.run(r)
+args = get_run_args()
+
+# bertServer = BertServer(args)
+num_labels, label2id, id2label = init_predict_var(args.classify_model_pb_dir)
+classify_graph_path=os.path.join(args.classify_model_pb_dir,"classification_model.pb")
+with tf.gfile.GFile(classify_graph_path, 'rb') as f:
+    graph_def = tf.GraphDef()
+    graph_def.ParseFromString(f.read())
+bertWorker = BertWorker(args, args.device_map, classify_graph_path, "CLASS", id2label,"","")
+estimator = bertWorker.get_estimator(tf,graph_def,"CLASS")
+
+class Bert():
+    def __init__(self,msg):
+        self.msg = msg
+msg=["预热数据"]
+bert = Bert(msg)
+
+r = estimator.predict(input_fn=bertWorker.input_fn_builder(bert),yield_single_examples=False)
+bertWorker.run(r)
 
 
 #------------------------------------------------------------------------------------------
 
 
-
-args = get_run_args()
 num_labels, predicate_id2label, token_id2label = ner_init_predict_var(args.ner_model_pb_dir)
 ner_graph_path=os.path.join(args.ner_model_pb_dir,"ner_model.pb")
 with tf.gfile.GFile(ner_graph_path, 'rb') as f:
@@ -106,15 +102,15 @@ ner_bertWorker.run_ner(ner_r)
 
 
 
-# @app.route("/predict",methods=["GET","POST"])
-# def predict():
-#
-#     text1="北京市，简称“京”，古称燕京、北平，是中华人民共和国首都、"
-#     text2 = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部"
-#     text=[text1,text2]
-#     bert.msg = text
-#     bertWorker.run(r)
-#     return "aaa"
+@app.route("/predict",methods=["GET","POST"])
+def predict():
+
+    text1="北京市，简称“京”，古称燕京、北平，是中华人民共和国首都、"
+    text2 = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部"
+    text=[text1,text2]
+    bert.msg = text
+    bertWorker.run(r)
+    return "aaa"
 
 
 @app.route("/predict_ner",methods=["GET","POST"])
