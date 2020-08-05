@@ -31,7 +31,7 @@ class InputFeatures(object):
         self.input_type_ids = input_type_ids
 
 class BertWorker():
-    def __init__(self, args, device_map, graph_path, mode, id2label,predicate_id2label, token_id2label):
+    def __init__(self, args, device_map, graph_path, mode, id2label,predicate_id2label, token_id2label,r):
         super().__init__()
         # self.worker_id = id
         self.device_map = device_map
@@ -53,6 +53,7 @@ class BertWorker():
         self.id2label = id2label
         self.predicate_id2label = predicate_id2label
         self.token_id2label = token_id2label
+        self.r = r
 
     def close(self):
         self.logger.info('shutting down...')
@@ -163,59 +164,6 @@ class BertWorker():
         elif mode == 'CLASS':
             return Estimator(model_fn=classification_model_fn, config=RunConfig(session_config=config))
 
-    def run(self,r):
-        # Windows does not support logger in MP environment, thus get a new logger
-        # inside the process for better compatibility
-        logger = set_logger(colored('WORKER-%d' , 'yellow'), self.verbose)
-        logger.info('use device %s, load graph from %s' %
-                    ('cpu' if len(self.device_map) <= 0 else ('gpu: %s' % ",".join(self.device_map)), self.graph_path))
-
-        tf = import_tf(self.device_map, self.verbose, use_fp16=self.use_fp16)
-        # estimator = self.get_estimator(tf)
-
-
-        # for sock, addr in zip(receivers, self.worker_address):
-        #     sock.connect(addr)
-
-        # sink.connect(self.sink_address)
-
-        predict_drop_remainder = False
-        predict_file = "D:\\LiuXianXian\\pycharm--code\\flask4bert\\BertModel\\predictData\\predict.tf_record"
-        # predict_input_fn = self.file_based_input_fn_builder(
-        #     input_file=predict_file,
-        #     seq_length=128,
-        #     label_length=49,
-        #     is_training=False,
-        #     drop_remainder=predict_drop_remainder)
-        # msg = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部"
-        # r = estimator.predict(input_fn=self.input_fn_builder(msg))
-
-        prediction=next(r)
-        pred_label_result = []
-        pred_score_result = []
-        for index, class_probabilitys in enumerate(prediction["encodes"]):
-            single_result = []
-            single_socre_result = []
-            logger.info(prediction)
-            pro_sum = 0.0
-            for idx,class_probability in enumerate(class_probabilitys):
-                pro_sum=pro_sum+class_probability
-                if class_probability > 0.5:
-                    single_result.append(self.id2label.get(idx, -1))
-                    single_socre_result.append(class_probability)
-            print(pro_sum)
-            pred_label_result.append(single_result)
-            pred_score_result.append(single_socre_result)
-            # pred_label_result = [self.id2label.get(x, -1) for x in r['encodes'] ]
-
-            # pred_score_result = r['score'].tolist()
-            to_client = {'pred_label': pred_label_result, 'score': pred_score_result}
-            logger.info(to_client)
-            print("---break")
-
-        # rst = send_ndarray(sink, r['client_id'], to_client)
-        # logger.info('job done\tsize: %s\tclient: %s' % (r['encodes'].shape, r['client_id']))
-        return "predict"
 
     def convert_id_to_label(self,pred_ids_result, idx2label, batch_size):
         """
@@ -306,21 +254,79 @@ class BertWorker():
         # logger.info('job done\tsize: %s\tclient: %s' % (r['encodes'].shape, r['client_id']))
 
 
+    def run_classify(self,bert,classify_graph_def,first):
+        # Windows does not support logger in MP environment, thus get a new logger
+        # inside the process for better compatibility
+        logger = set_logger(colored('WORKER-%d' , 'yellow'), self.verbose)
+        logger.info('use device %s, load graph from %s' %
+                    ('cpu' if len(self.device_map) <= 0 else ('gpu: %s' % ",".join(self.device_map)), self.graph_path))
+
+        tf = import_tf(self.device_map, self.verbose, use_fp16=self.use_fp16)
+        # estimator = self.get_estimator(tf)
+
+
+        # for sock, addr in zip(receivers, self.worker_address):
+        #     sock.connect(addr)
+
+        # sink.connect(self.sink_address)
+
+        predict_drop_remainder = False
+        predict_file = "D:\\LiuXianXian\\pycharm--code\\flask4bert\\BertModel\\predictData\\predict.tf_record"
+        # predict_input_fn = self.file_based_input_fn_builder(
+        #     input_file=predict_file,
+        #     seq_length=128,
+        #     label_length=49,
+        #     is_training=False,
+        #     drop_remainder=predict_drop_remainder)
+        # msg = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部"
+        # r = estimator.predict(input_fn=self.input_fn_builder(msg))
+
+        # aa = self.input_fn_builder()
+        if(first == True):
+            self.r = self.get_estimator(tf, classify_graph_def, "CLASS").predict(input_fn=self.input_fn_builder(bert),yield_single_examples=False)
+        prediction=next(self.r)
+        pred_label_result = []
+        pred_score_result = []
+        for index, class_probabilitys in enumerate(prediction["encodes"]):
+            single_result = []
+            single_socre_result = []
+            # logger.info(prediction)
+            pro_sum = 0.0
+            for idx,class_probability in enumerate(class_probabilitys):
+                pro_sum=pro_sum+class_probability
+                if class_probability > 0.5:
+                    single_result.append(self.id2label.get(idx, -1))
+                    single_socre_result.append(class_probability)
+            print(pro_sum)
+            pred_label_result.append(single_result)
+            pred_score_result.append(single_socre_result)
+            # pred_label_result = [self.id2label.get(x, -1) for x in r['encodes'] ]
+
+            # pred_score_result = r['score'].tolist()
+        to_client = {'pred_label': pred_label_result, 'score': pred_score_result}
+        logger.info(to_client)
+
+
+        return pred_label_result
+
+
     def input_fn_builder(self,bert):
         import sys
         sys.path.append('..')
-
         from bert_base.bert.tokenization import FullTokenizer
 
+        print("nihao1")
 
-        print(bert.msg)
         def gen():
             while True:
+                # if bert.first == True:
+                #     break
                 # tokenizer = FullTokenizer(vocab_file=os.path.join(self.args.bert_model_dir, 'vocab.txt'))
                 tokenizer = FullTokenizer(vocab_file="D:\\LiuXianXian\\pycharm--code\\flask4bert\\BertModel\\checkpoints\\vocab_classify.txt")
                 # Windows does not support logger in MP environment, thus get a new logger
                 # inside the process for better compatibility
                 logger = set_logger(colored('WORKER-%d' , 'yellow'), self.verbose)
+                print("22222222222222222222222222222222222222222222222222222222222222222222222222")
 
 
 
@@ -330,13 +336,14 @@ class BertWorker():
                 # check if msg is a list of list, if yes consider the input is already tokenized
                 # 对接收到的字符进行切词，并且转化为id格式
                 # logger.info('get msg:%s, type:%s' % (msg[0], type(msg[0])))
-                # msg = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部"
+                msg = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部"
                 is_tokenized = all(isinstance(el, list) for el in bert.msg)
                 logger.info(is_tokenized)
                 tmp_f = list(extract_features.convert_lst_to_features(bert.msg, self.max_seq_len, tokenizer, logger,
                                                                       is_tokenized, self.mask_cls_sep))
                 print([f.input_ids for f in tmp_f])
                 client_id ="1"
+
                 yield {
                     # 'client_id': client_id,
                     'input_ids': [f.input_ids for f in tmp_f],
@@ -344,7 +351,7 @@ class BertWorker():
                     'input_type_ids': [f.input_type_ids for f in tmp_f]
                 }
 
-
+        # next(gen())
         def input_fn():
 
             return (tf.data.Dataset.from_generator(
@@ -358,9 +365,10 @@ class BertWorker():
                     # 'client_id': (),
                     'input_ids': (None, self.max_seq_len),
                     'input_mask': (None, self.max_seq_len), #.shard(num_shards=4, index=4)
-                    'input_type_ids': (None, self.max_seq_len)}).prefetch(self.prefetch_size))
+                    'input_type_ids': (None, self.max_seq_len)}))
 
 
+        print("nihao2")
         return input_fn
 
 
@@ -423,6 +431,6 @@ class BertWorker():
                    # "tokens":(None,self.max_seq_len)
                 }).prefetch(self.prefetch_size))
 
-        gen()
-        print("aaa")
+        # gen()
+        # print("aaa")
         return input_fn
