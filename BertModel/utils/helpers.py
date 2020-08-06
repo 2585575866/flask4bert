@@ -10,6 +10,8 @@ import sys
 import zmq
 from datetime import datetime
 import pickle
+
+from flask import json
 from termcolor import colored
 
 __all__ = ['__version__']
@@ -110,3 +112,13 @@ def ner_init_predict_var(path):
     return num_labels, predicate_id2label,token_id2label
 
 
+def filter_blank(x):
+    return x !="" and x!=" "
+
+
+def get50SchemasDict(schemaFilePath):
+    dict={}
+    for line in  open(schemaFilePath,encoding="utf-8"):
+        tmpDict = json.loads(line)
+        dict[tmpDict["predicate"]]=[tmpDict["subject_type"],tmpDict["object_type"]]
+    return dict

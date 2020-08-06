@@ -31,7 +31,7 @@ class InputFeatures(object):
         self.input_type_ids = input_type_ids
 
 class BertWorker():
-    def __init__(self, args, device_map, graph_path, mode, id2label,predicate_id2label, token_id2label,r):
+    def __init__(self, args, device_map, graph_path, mode, id2label,predicate_id2label, token_id2label):
         super().__init__()
         # self.worker_id = id
         self.device_map = device_map
@@ -53,7 +53,7 @@ class BertWorker():
         self.id2label = id2label
         self.predicate_id2label = predicate_id2label
         self.token_id2label = token_id2label
-        self.r = r
+
 
     def close(self):
         self.logger.info('shutting down...')
@@ -194,67 +194,11 @@ class BertWorker():
             index_result.append(curr_idx)
         return result, index_result
 
-    def ner_result_to_json(self,predict_ids, id2label):
-        """
-        NER识别结果转化为真实标签结果进行返回
-        :param predict_ids:
-        :param id2label
-        :return:
-        """
-        if False:
-            return predict_ids
-        pred_label_result, pred_ids_result = self.convert_id_to_label(predict_ids, id2label, len(predict_ids))
-        return pred_label_result, pred_ids_result
-
-    def run_ner(self,r):
-        # Windows does not support logger in MP environment, thus get a new logger
-        # inside the process for better compatibility
-        logger = set_logger(colored('WORKER-%d' , 'yellow'), self.verbose)
-
-        # logger.info('use device %s, load graph from %s' %
-        #             ('cpu' if len(self.device_map) <= 0 else ('gpu: %s' % ",".join(self.device_map)), self.graph_path))
-
-        tf = import_tf(self.device_map, self.verbose, use_fp16=self.use_fp16)
-
-        prediction = next(r)
 
 
-        logger.info(prediction["predicate_probabilities"])
-        logger.info(prediction["predicate_probabilities"].shape)
-        logger.info(prediction["predicate_index"])
-        logger.info(prediction["token_label_probabilities"])
-        logger.info(prediction["token_label_probabilities"].shape)
-        logger.info(prediction["token_label_index"])
-        # logger.info("tokens=========",r["tokens"])
-        predicate_index = prediction["predicate_index"]
-        token_label_index = prediction["token_label_index"]
-        logger.info(self.predicate_id2label)
-
-        predicate_result = []
-        for tmp_predicate_index in predicate_index:
-            tmp_result = []
-            tmp_result.append(self.predicate_id2label.get(tmp_predicate_index, -1))
-            predicate_result.append(tmp_result)
-        logger.info(predicate_result)
-
-        token_label_result, pred_ids_result = self.ner_result_to_json(token_label_index, self.token_id2label)
-        logger.info(token_label_result)
-
-        result = []
-        for index, tmp_token_label_result in enumerate(token_label_result):
-            # logger.info(predicate_result[index])
-            tmp_token_label_result.append(predicate_result[index])
-            result.append(tmp_token_label_result)
-
-        result_dict={"pred_label":predicate_result,"token_label_result":token_label_result}
-        result_dict={"pred_label":predicate_result}
-        logger.info(result)
-
-        # print('rst:', rst)
-        # logger.info('job done\tsize: %s\tclient: %s' % (r['encodes'].shape, r['client_id']))
 
 
-    def run_classify(self,bert,classify_graph_def,first):
+    def run_classify(self,r):
         # Windows does not support logger in MP environment, thus get a new logger
         # inside the process for better compatibility
         logger = set_logger(colored('WORKER-%d' , 'yellow'), self.verbose)
@@ -282,9 +226,7 @@ class BertWorker():
         # r = estimator.predict(input_fn=self.input_fn_builder(msg))
 
         # aa = self.input_fn_builder()
-        if(first == True):
-            self.r = self.get_estimator(tf, classify_graph_def, "CLASS").predict(input_fn=self.input_fn_builder(bert),yield_single_examples=False)
-        prediction=next(self.r)
+        prediction=next(r)
         pred_label_result = []
         pred_score_result = []
         for index, class_probabilitys in enumerate(prediction["encodes"]):
@@ -297,7 +239,7 @@ class BertWorker():
                 if class_probability > 0.5:
                     single_result.append(self.id2label.get(idx, -1))
                     single_socre_result.append(class_probability)
-            print(pro_sum)
+            # print(pro_sum)
             pred_label_result.append(single_result)
             pred_score_result.append(single_socre_result)
             # pred_label_result = [self.id2label.get(x, -1) for x in r['encodes'] ]
@@ -374,6 +316,62 @@ class BertWorker():
 
 
 
+    def ner_result_to_json(self,predict_ids, id2label):
+        """
+        NER识别结果转化为真实标签结果进行返回
+        :param predict_ids:
+        :param id2label
+        :return:
+        """
+        if False:
+            return predict_ids
+        pred_label_result, pred_ids_result = self.convert_id_to_label(predict_ids, id2label, len(predict_ids))
+        return pred_label_result, pred_ids_result
+
+    def run_ner(self,r):
+        # Windows does not support logger in MP environment, thus get a new logger
+        # inside the process for better compatibility
+        logger = set_logger(colored('WORKER-%d' , 'yellow'), self.verbose)
+
+        # logger.info('use device %s, load graph from %s' %
+        #             ('cpu' if len(self.device_map) <= 0 else ('gpu: %s' % ",".join(self.device_map)), self.graph_path))
+
+        tf = import_tf(self.device_map, self.verbose, use_fp16=self.use_fp16)
+
+        prediction = next(r)
+
+        # logger.info(prediction["predicate_probabilities"])
+        # logger.info(prediction["predicate_probabilities"].shape)
+        # logger.info(prediction["predicate_index"])
+        # logger.info(prediction["token_label_probabilities"])
+        # logger.info(prediction["token_label_probabilities"].shape)
+        # logger.info(prediction["token_label_index"])
+
+        predicate_index = prediction["predicate_index"]
+        token_label_index = prediction["token_label_index"]
+        # logger.info(self.predicate_id2label)
+
+        predicate_result = []
+        for tmp_predicate_index in predicate_index:
+            tmp_result = []
+            tmp_result.append(self.predicate_id2label.get(tmp_predicate_index, -1))
+            predicate_result.append(tmp_result)
+        # logger.info(predicate_result)
+
+        token_label_result, pred_ids_result = self.ner_result_to_json(token_label_index, self.token_id2label)
+        # logger.info(token_label_result)
+
+        result = []
+        for index, tmp_token_label_result in enumerate(token_label_result):
+            # logger.info(predicate_result[index])
+            tmp_token_label_result.append(predicate_result[index])
+            result.append(tmp_token_label_result)
+
+        result_dict={"pred_label":predicate_result,"token_label_result":token_label_result}
+        result_dict={"pred_label":predicate_result}
+        logger.info(result)
+        return token_label_result
+
 
     def ner_input_fn_builder(self,ner_bert):
         import sys
@@ -402,8 +400,8 @@ class BertWorker():
 
 
                 print("tokens:",[f.tokens for f in tmp_f])
-                print("input_ids:",[f.input_ids for f in tmp_f])
-                print("--------------------------------")
+                # print("input_ids:",[f.input_ids for f in tmp_f])
+                # print("--------------------------------")
 
 
                 yield {
@@ -429,8 +427,9 @@ class BertWorker():
                     'input_mask': (None, self.max_seq_len), #.shard(num_shards=4, index=4)
                     'input_type_ids': (None, self.max_seq_len),
                    # "tokens":(None,self.max_seq_len)
-                }).prefetch(self.prefetch_size))
+                }))
 
         # gen()
         # print("aaa")
         return input_fn
+

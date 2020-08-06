@@ -618,6 +618,84 @@ def read_line_examples(lst_strs):
         unique_id += 1
 
 
+def convert_lst_to_tokens(lst_str, seq_length, tokenizer, is_tokenized=False, mask_cls_sep=False):
+    """Loads a data file into a list of `InputBatch`s."""
+
+    examples = read_tokenized_examples(lst_str) if is_tokenized else read_line_examples(lst_str)
+    # print(examples)
+
+    _tokenize = lambda x: x if is_tokenized else tokenizer.tokenize(x)
+
+    result = []
+    for (ex_index, example) in enumerate(examples):
+        tokens_a = _tokenize(example.text_a)
+        # print("tokens_a:",tokens_a)
+
+        tokens_b = None
+        if example.text_b:
+            # tokens_b = _tokenize(example.text_b)
+            tokens_b = [example.text_b] * len(tokens_a)
+            # print("tokens_b:",tokens_b)
+
+        if tokens_b:
+            # Modifies `tokens_a` and `tokens_b` in place so that the total
+            # length is less than the specified length.
+            # Account for [CLS], [SEP], [SEP] with "- 3"
+            _truncate_seq_pair(tokens_a, tokens_b, seq_length - 3)
+        else:
+            # Account for [CLS] and [SEP] with "- 2"
+            if len(tokens_a) > seq_length - 2:
+                tokens_a = tokens_a[0:(seq_length - 2)]
+
+        # The convention in BERT is:
+        # (a) For sequence pairs:
+        #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
+        #  type_ids: 0     0  0    0    0     0       0 0     1  1  1  1   1 1
+        # (b) For single sequences:
+        #  tokens:   [CLS] the dog is hairy . [SEP]
+        #  type_ids: 0     0   0   0  0     0 0
+        #
+        # Where "type_ids" are used to indicate whether this is the first
+        # sequence or the second sequence. The embedding vectors for `type=0` and
+        # `type=1` were learned during pre-training and are added to the wordpiece
+        # embedding vector (and position vector). This is not *strictly* necessary
+        # since the [SEP] token unambiguously separates the sequences, but it makes
+        # it easier for the model to learn the concept of sequences.
+        #
+        # For classification tasks, the first vector (corresponding to [CLS]) is
+        # used as as the "sentence vector". Note that this only makes sense because
+        # the entire model is fine-tuned.
+        tokens = ['[CLS]'] + tokens_a + ['[SEP]']
+        input_type_ids = [0] * len(tokens)
+        input_mask = [int(not mask_cls_sep)] + [1] * len(tokens_a) + [int(not mask_cls_sep)]
+
+        if tokens_b:
+            tokens += tokens_b + ['[SEP]']
+            input_type_ids += [1] * (len(tokens_b) + 1)
+            input_mask += [1] * len(tokens_b) + [int(not mask_cls_sep)]
+
+        # print("tokens::",tokens)
+        result.append(tokens)
+    return result
+    # input_ids = tokenizer.convert_tokens_to_ids(tokens)
+    # print("input_ids::",input_ids)
+
+    # Zero-pad up to the sequence length. more pythonic
+    # pad_len = seq_length - len(input_ids)
+    # input_ids += [0] * pad_len
+    # input_mask += [0] * pad_len
+    # input_type_ids += [0] * pad_len
+
+    # assert len(input_ids) == seq_length
+    # assert len(input_mask) == seq_length
+    # assert len(input_type_ids) == seq_length
+
+    # logger.debug('tokens: %s' % ' '.join([tokenization.printable_text(x) for x in tokens]))
+    # logger.debug('input_ids: %s' % ' '.join([str(x) for x in input_ids]))
+    # logger.debug('input_mask: %s' % ' '.join([str(x) for x in input_mask]))
+    # logger.debug('input_type_ids: %s' % ' '.join([str(x) for x in input_type_ids]))
+
+
 if __name__ == "__main__":
     flags.mark_flag_as_required("input_file")
     flags.mark_flag_as_required("vocab_file")
